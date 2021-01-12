@@ -21,7 +21,7 @@ class Frames(object):
     def newWindow(self):
 
         win = tk.Toplevel()
-        win.iconbitmap(r"C:\Users\hp\Desktop\GRC\win_icon-_1_.ico")
+        #win.iconbitmap(r"./win_icon-_1_.ico")
         win.title('A Guide to Using QuGUI V2')
         # IMAGES
 
@@ -84,7 +84,7 @@ class Frames(object):
 
         master.title('QuGUI')
         ##add a text widget that says : Interactive GUI for numerical experiments of the dynamics of an isolated qubit
-        master.iconbitmap(r"C:\Users\hp\Desktop\GRC\icons\master_icon.ico")
+        #master.iconbitmap("master_icon.ico")
         master.geometry("1200x700")
 
         ###THE BUTTON FOR THE HELP WINDOW
@@ -142,7 +142,7 @@ class Frames(object):
         e4.grid(row=3, column=0)
         e4 = Entry(master, textvariable=theta)
 
-        scale4 = Scale(master, from_=0, to=90, variable=theta, resolution=1,
+        scale4 = Scale(master, from_=0, to=180, variable=theta, resolution=1,
         orient=HORIZONTAL, length=360, width=20, background= 'azure2',
         activebackground='azure4')
         scale4.grid(row=3, column =1)
@@ -172,6 +172,10 @@ class Frames(object):
             sigmaz = np.array([ [1, 0], [0, -1] ]);
             f=waveform(t, A,w,T)
             #ret =np.array([ -1j * f * y[1], -1j * (f * y[0] + y[1]) ])
+            #
+            # this solves the dynamics of a qubit quantized along the
+            # direction z in an external field along the x direction
+            #
             ret = (1j * sigmaz @ y + 1j * f * sigmax @ y)/2
             return ret
 
@@ -184,8 +188,21 @@ class Frames(object):
             # the time that we use to solve the ode
             t = np.linspace(-5*T, 5*T, num=500)
 
-            # the starting vector
-            y0=[ np.sin(th0) * np.exp(1j*phi0), np.cos(th0) ]
+            # we write the state as
+            # |psi> = sin(th/2) |0> + cos(th/2) exp(-i phi) |1>
+            # so that
+            # <psi | sigma_z | psi> = cos(th)
+            # <psi | sigma_y | psi> = sin(th) cos(phi)
+            # <psi | sigma_x | psi> = sin(th) sin(phi)
+            # which are the "usual" formulae for polar coordinates.
+            #
+            # Due to the way we have written the sigmaz matrix we have
+            #
+            # component 0: amplitude of |1> = cos(th/2) exp(-i phi)
+            # component 1: amplitude of |0> = sin(th/2)
+            #
+            # so the starting vector is
+            y0=[ np.cos(th0/2) * np.exp(-1j * phi0), np.sin(th0/2) ]
             #sol = solve_ivp(lambda t,y: odefunc(t,y,A,w,T), [-5*T,5*T], y0)
             sol = solve_ivp(odefunc, [-5*T,5*T], y0, t_eval=t, method='BDF')
 
@@ -202,12 +219,30 @@ class Frames(object):
         a = f.add_subplot(131)
         b = f.add_subplot(132)
         c = f.add_subplot(133, projection='3d')
+        # now we create two sliders to control the point-of-view on the 3D graph
+        azim = DoubleVar()
+        elev = DoubleVar()
+        azim.set(-60)
+        elev.set(30)
+        celev = Scale(master, orient=VERTICAL,
+                   from_=0, to=180, variable=elev, resolution=1,
+                   command=lambda o: replot(c,azim.get(),elev.get()))
+        cazim = Scale(master, orient=HORIZONTAL,
+                   from_=0, to=360, variable=azim, resolution=1,
+                   command=lambda o: replot(c,azim.get(),elev.get()))
+        # this is placed on the right of the plots
+        celev.grid(row=5,column=3)
+        # this is below the plots, aligned to the right
+        cazim.grid(row=6,column=1,sticky=E)
         ## tkinter-matplotlib connection
         canvas = FigureCanvasTkAgg(f, master=master)
         canvas.draw()
 
-        # create the plot and update the canvas
+        def replot(c,azim,elev):
+            c.view_init(azim=azim,elev=elev)
+            canvas.draw()
 
+        # create the plot and update the canvas
         def plot_waveform(A=1, omega=1, T=1):
             #print(A,T,omega)
             t = np.linspace(-5*T,5*T,num=500)
@@ -225,16 +260,18 @@ class Frames(object):
 
             P = np.abs(y)**2
 
-            v0 = y[:,0]
-            v1 = y[:,1]
-            phase = np.exp(-1j*np.angle(v1))
-            v0 = v0 * phase
-            v1 = v1 * phase
-            phi = np.angle(v0 * np.sign(np.real(v1)))
+            a0 = y[:,1] # amplitude of |0> - see solve_ode for details
+            a1 = y[:,0] # amplitude of |1>
+
+            # make v0 real
+            phase = np.exp(-1j*np.angle(a0))
+            a1 = a1 * phase
+            # now the phase of v1 is what we want
+            phi = np.angle(a1)
             phi = phi + 2.0*np.pi*(phi<0)
             b.plot(t,P[:,1],label='P(0)')
-            b.plot(t,phi/(2.0*np.pi),label='phi')
-            #b.plot(t,P[:,0],label='P(1)')
+            b.plot(t,phi/(2.0*np.pi),'--' ,label='phi')
+            b.plot(t,P[:,0],label='P(1)')
             #b.plot(t,P[:,1],y, label='P(0)')
 
             b.legend(loc="center left")
